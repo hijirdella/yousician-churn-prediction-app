@@ -1,71 +1,63 @@
-# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import joblib
 
-# === Load Komponen Model ===
-model = joblib.load('Logistic Regression - Tuned - Ukulele by Yousician.pkl')
-scaler = joblib.load('scaler_Ukulele by Yousician.pkl')
-selected_features = joblib.load('feature_columns_Ukulele by Yousician.pkl')
+# --- Load Model, Scaler, and Features ---
+model = joblib.load("Logistic Regression - Tuned - Ukulele by Yousician.pkl")
+scaler = joblib.load("scaler_Ukulele by Yousician.pkl")
+feature_cols = joblib.load("feature_columns_Ukulele by Yousician.pkl")
 
-# === Judul Aplikasi ===
-st.set_page_config(page_title="Yousician Churn Prediction App", page_icon="🎸")
-st.title("🎸 Yousician Churn Prediction App")
+# --- Title ---
+st.title("🎵 Yousician Churn Prediction App")
+st.markdown("Predict whether a user will churn based on their behavioral log from Yousician Ukulele learning app.")
 
-# === Deskripsi Singkat ===
-st.markdown("""
-Prediksi apakah pengguna akan churn (berhenti menggunakan aplikasi) berdasarkan perilaku bermain mereka dalam aplikasi *Ukulele by Yousician*.
+# --- Mode Selection ---
+mode = st.radio("Select Input Mode", ["📝 Manual Input", "📁 Upload CSV"])
 
-🔍 Anda dapat memasukkan data secara manual atau mengunggah file CSV yang sudah melalui preprocessing.
-
-📌 Model yang digunakan: **Logistic Regression (Hyperparameter Tuned)**
-""")
-
-# === Pilih Mode Input ===
-mode = st.radio("📥 Pilih Mode Input", ["📝 Manual", "📁 Upload CSV"])
-
-# === MODE 1: Input Manual ===
-if mode == "📝 Manual":
-    st.subheader("🔧 Input Data Manual")
+# ===================================
+# 📝 1. MANUAL INPUT
+# ===================================
+if mode == "📝 Manual Input":
+    st.subheader("Enter User Log Information")
 
     user_input = {}
-    for feature in selected_features:
-        if feature in ["session_index", "notes_evaluated", "notes_successful", "chords_evaluated", "chords_successful"]:
-            user_input[feature] = st.number_input(f"{feature.replace('_', ' ').title()}", min_value=0, step=1)
+    for col in feature_cols:
+        user_input[col] = st.number_input(f"{col}", step=1.0 if "log" in col or "ratio" in col else 1)
+
+    input_df = pd.DataFrame([user_input])
+    scaled_input = scaler.transform(input_df)
+    prediction = model.predict(scaled_input)[0]
+    pred_label = "❌ Churn" if prediction == 1 else "✅ Not Churn"
+
+    st.markdown(f"### 🎯 Prediction Result: **{pred_label}**")
+
+# ===================================
+# 📁 2. CSV UPLOAD
+# ===================================
+else:
+    st.subheader("Upload Preprocessed CSV File")
+
+    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+
+    if uploaded_file is not None:
+        data = pd.read_csv(uploaded_file)
+
+        if all(col in data.columns for col in feature_cols):
+            X = data[feature_cols]
+            X_scaled = scaler.transform(X)
+            preds = model.predict(X_scaled)
+
+            data["prediction"] = ["❌ Churn" if p == 1 else "✅ Not Churn" for p in preds]
+
+            st.success("✅ Prediction completed!")
+            st.dataframe(data[["prediction"] + feature_cols].head())
+
+            # 📥 Downloadable CSV
+            csv = data.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Download Predictions", data=csv, file_name="churn_predictions.csv", mime="text/csv")
         else:
-            user_input[feature] = st.number_input(f"{feature.replace('_', ' ').title()}", min_value=0.0)
+            st.error("❗CSV file must contain all required feature columns used during training.")
 
-    if st.button("🔮 Prediksi Churn"):
-        input_df = pd.DataFrame([user_input])
-        input_scaled = scaler.transform(input_df)
-        prediction = model.predict(input_scaled)[0]
-        st.success(f"📈 Prediksi: {'Churn' if prediction == 1 else 'Not Churn'}")
-
-# === MODE 2: Upload CSV ===
-elif mode == "📁 Upload CSV":
-    st.subheader("📂 Upload File CSV")
-
-    st.markdown("""
-    ⚠️ **Catatan:** File CSV Anda harus sudah berisi kolom-kolom fitur hasil preprocessing, yaitu:
-    - `days_since_signup`, `difficulty_level`, `session_index`, `time_playing`
-    - `notes_evaluated`, `notes_successful`, `chords_evaluated`, `chords_successful`, dll
-    """)
-
-    uploaded_file = st.file_uploader("Unggah file CSV preprocessed", type=["csv"])
-
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-
-        missing = [col for col in selected_features if col not in df.columns]
-        if missing:
-            st.error(f"❌ File Anda tidak memiliki kolom: {missing}")
-        else:
-            st.success("✅ File berhasil dibaca dan siap diprediksi")
-            df_scaled = scaler.transform(df[selected_features])
-            df['churn_prediction'] = model.predict(df_scaled)
-
-            st.write("📊 Hasil Prediksi Churn:")
-            st.dataframe(df[['user_id', 'churn_prediction']] if 'user_id' in df.columns else df)
-
-            csv_download = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Hasil Prediksi", data=csv_download, file_name="churn_prediction_result.csv")
+# Footer
+st.markdown("---")
+st.markdown("Built with ❤️ by Hijir Della Wirasti | Tuned Logistic Regression Model")
